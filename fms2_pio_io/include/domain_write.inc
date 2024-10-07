@@ -132,10 +132,9 @@ subroutine domain_write_2d(fileobj, variable_name, vdata, unlim_dim_level, &
   integer :: ydim_index
   integer :: ypos
   integer :: yc_size
-  integer(kind=i4_kind) :: fill_i4_kind !< Fill value of a i4_kind variable
-  integer(kind=i8_kind) :: fill_i8_kind !< Fill value of a i8_kind variable
-  real(kind=r4_kind) :: fill_r4_kind !< Fill value of a r4_kind variable
-  real(kind=r8_kind) :: fill_r8_kind !< Fill value of a r8_kind variable
+  integer(kind=i4_kind), allocatable :: fill_i4_kind !< Fill value of a i4_kind variable
+  real(kind=r4_kind), allocatable :: fill_r4_kind !< Fill value of a r4_kind variable
+  real(kind=r8_kind), allocatable :: fill_r8_kind !< Fill value of a r8_kind variable
   integer :: xgmax !< Ending x index of the global io domain
   integer :: xgmin !< Starting x index of the global io domain
   integer :: ygmax !< Ending y index of the global io domain
@@ -154,51 +153,52 @@ subroutine domain_write_2d(fileobj, variable_name, vdata, unlim_dim_level, &
     return
   endif
 
-  select type(vdata)
-    type is (integer(kind=i4_kind))
-      basetype_nf = PIO_INT
-    type is (real(kind=r4_kind))
-      basetype_nf = PIO_REAL
-    type is (real(kind=r8_kind))
-      basetype_nf = PIO_DOUBLE
-    class default
-      call error("unsupported variable type: domain_write_4d: file: "//trim(fileobj%path)//" variable:"// &
-               & trim(variable_name))
-  end select
-
   ! get varid and construct a temporary vardesc to pass to PIO routines
   varid = get_variable_id(fileobj%ncid, trim(variable_name), &
-              msg="file:"//trim(fileobj%path)//" and variable:"//trim(variable_name))
+                          msg="file:"//trim(fileobj%path)//" and variable:"//trim(variable_name))
   vardesc%varID = varid
   vardesc%ncid = fileobj%ncid
+
+  ! Get the kind of the variable from PIO
+  basetype_nf = get_variable_type(fileobj%ncid, varid)
 
   decomp => get_decomp(fileobj, variable_name, vardesc, shape(vdata), basetype_nf, 2, xdim_index, ydim_index, unlim_dim_level)
 
   err = 0
   select type(vdata)
     type is (integer(kind=i4_kind))
-      if (get_fill_value(fileobj, variable_name, fill_i4_kind, broadcast=.false.)) then
-        call PIO_write_darray(fileobj%file_desc, vardesc, decomp%iodesc, vdata, err, fillval=fill_i4_kind)
-      else
-        call PIO_write_darray(fileobj%file_desc, vardesc, decomp%iodesc, vdata, err)
-      endif
+      allocate(fill_i4_kind)
+      if (.not. get_fill_value(fileobj, variable_name, fill_i4_kind, broadcast=.false.)) deallocate(fill_i4_kind)
+      call PIO_write_darray(fileobj%file_desc, vardesc, decomp%iodesc, vdata, err, fillval=fill_i4_kind)
     type is (real(kind=r4_kind))
-      if (get_fill_value(fileobj, variable_name, fill_r4_kind, broadcast=.false.)) then
+      if (basetype_nf == pio_real) then
+        allocate(fill_r4_kind)
+        if (.not. get_fill_value(fileobj, variable_name, fill_r4_kind, broadcast=.false.)) deallocate(fill_r4_kind)
         call PIO_write_darray(fileobj%file_desc, vardesc, decomp%iodesc, vdata, err, fillval=fill_r4_kind)
-      else
-        call PIO_write_darray(fileobj%file_desc, vardesc, decomp%iodesc, vdata, err)
+      else ! basetype_nf == pio_double
+        allocate(fill_r8_kind)
+        if (.not. get_fill_value(fileobj, variable_name, fill_r8_kind, broadcast=.false.)) deallocate(fill_r8_kind)
+        call PIO_write_darray(fileobj%file_desc, vardesc, decomp%iodesc, real(vdata, kind=r8_kind), err, fillval=fill_r8_kind)
       endif
     type is (real(kind=r8_kind))
-      if (get_fill_value(fileobj, variable_name, fill_r8_kind, broadcast=.false.)) then
+      if (basetype_nf == pio_real) then
+        allocate(fill_r4_kind)
+        if (.not. get_fill_value(fileobj, variable_name, fill_r4_kind, broadcast=.false.)) deallocate(fill_r4_kind)
+        call PIO_write_darray(fileobj%file_desc, vardesc, decomp%iodesc, real(vdata, kind=r4_kind), err, fillval=fill_r4_kind)
+      else ! basetype_nf == pio_double
+        allocate(fill_r8_kind)
+        if (.not. get_fill_value(fileobj, variable_name, fill_r8_kind, broadcast=.false.)) deallocate(fill_r8_kind)
         call PIO_write_darray(fileobj%file_desc, vardesc, decomp%iodesc, vdata, err, fillval=fill_r8_kind)
-      else
-        call PIO_write_darray(fileobj%file_desc, vardesc, decomp%iodesc, vdata, err)
       endif
     class default
       call error("unsupported variable type: domain_write_4d: file: "//trim(fileobj%path)//" variable:"// &
                & trim(variable_name))
   end select
   call check_netcdf_code(err, "domain_write.inc")
+
+  if (allocated(fill_i4_kind)) deallocate(fill_i4_kind)
+  if (allocated(fill_r4_kind)) deallocate(fill_r4_kind)
+  if (allocated(fill_r8_kind)) deallocate(fill_r8_kind)
 
 end subroutine domain_write_2d
 
@@ -255,10 +255,9 @@ subroutine domain_write_3d(fileobj, variable_name, vdata, unlim_dim_level, &
   integer :: ydim_index
   integer :: ypos
   integer :: yc_size
-  integer(kind=i4_kind) :: fill_i4_kind !< Fill value of a i4_kind variable
-  integer(kind=i8_kind) :: fill_i8_kind !< Fill value of a i8_kind variable
-  real(kind=r4_kind) :: fill_r4_kind !< Fill value of a r4_kind variable
-  real(kind=r8_kind) :: fill_r8_kind !< Fill value of a r8_kind variable
+  integer(kind=i4_kind), allocatable :: fill_i4_kind !< Fill value of a i4_kind variable
+  real(kind=r4_kind), allocatable :: fill_r4_kind !< Fill value of a r4_kind variable
+  real(kind=r8_kind), allocatable :: fill_r8_kind !< Fill value of a r8_kind variable
   integer :: xgmax !< Ending x index of the global io domain
   integer :: xgmin !< Starting x index of the global io domain
   integer :: ygmax !< Ending y index of the global io domain
@@ -277,51 +276,52 @@ subroutine domain_write_3d(fileobj, variable_name, vdata, unlim_dim_level, &
     return
   endif
 
-  select type(vdata)
-    type is (integer(kind=i4_kind))
-      basetype_nf = PIO_INT
-    type is (real(kind=r4_kind))
-      basetype_nf = PIO_REAL
-    type is (real(kind=r8_kind))
-      basetype_nf = PIO_DOUBLE
-    class default
-      call error("unsupported variable type: domain_write_4d: file: "//trim(fileobj%path)//" variable:"// &
-               & trim(variable_name))
-  end select
-
   ! get varid and construct a temporary vardesc to pass to PIO routines
   varid = get_variable_id(fileobj%ncid, trim(variable_name), &
               msg="file:"//trim(fileobj%path)//" and variable:"//trim(variable_name))
   vardesc%varID = varid
   vardesc%ncid = fileobj%ncid
 
+  ! Get the kind of the variable from PIO
+  basetype_nf = get_variable_type(fileobj%ncid, varid)
+
   decomp => get_decomp(fileobj, variable_name, vardesc, shape(vdata), basetype_nf, 3, xdim_index, ydim_index, unlim_dim_level)
 
   err = 0
   select type(vdata)
     type is (integer(kind=i4_kind))
-      if (get_fill_value(fileobj, variable_name, fill_i4_kind, broadcast=.false.)) then
-        call PIO_write_darray(fileobj%file_desc, vardesc, decomp%iodesc, vdata, err, fillval=fill_i4_kind)
-      else
-        call PIO_write_darray(fileobj%file_desc, vardesc, decomp%iodesc, vdata, err)
-      endif
+      allocate(fill_i4_kind)
+      if (.not. get_fill_value(fileobj, variable_name, fill_i4_kind, broadcast=.false.)) deallocate(fill_i4_kind)
+      call PIO_write_darray(fileobj%file_desc, vardesc, decomp%iodesc, vdata, err, fillval=fill_i4_kind)
     type is (real(kind=r4_kind))
-      if (get_fill_value(fileobj, variable_name, fill_r4_kind, broadcast=.false.)) then
+      if (basetype_nf == pio_real) then
+        allocate(fill_r4_kind)
+        if (.not. get_fill_value(fileobj, variable_name, fill_r4_kind, broadcast=.false.)) deallocate(fill_r4_kind)
         call PIO_write_darray(fileobj%file_desc, vardesc, decomp%iodesc, vdata, err, fillval=fill_r4_kind)
-      else
-        call PIO_write_darray(fileobj%file_desc, vardesc, decomp%iodesc, vdata, err)
+      else ! basetype_nf == pio_double
+        allocate(fill_r8_kind)
+        if (.not. get_fill_value(fileobj, variable_name, fill_r8_kind, broadcast=.false.)) deallocate(fill_r8_kind)
+        call PIO_write_darray(fileobj%file_desc, vardesc, decomp%iodesc, real(vdata, kind=r8_kind), err, fillval=fill_r8_kind)
       endif
     type is (real(kind=r8_kind))
-      if (get_fill_value(fileobj, variable_name, fill_r8_kind, broadcast=.false.)) then
+      if (basetype_nf == pio_real) then
+        allocate(fill_r4_kind)
+        if (.not. get_fill_value(fileobj, variable_name, fill_r4_kind, broadcast=.false.)) deallocate(fill_r4_kind)
+        call PIO_write_darray(fileobj%file_desc, vardesc, decomp%iodesc, real(vdata, kind=r4_kind), err, fillval=fill_r4_kind)
+      else ! basetype_nf == pio_double
+        allocate(fill_r8_kind)
+        if (.not. get_fill_value(fileobj, variable_name, fill_r8_kind, broadcast=.false.)) deallocate(fill_r8_kind)
         call PIO_write_darray(fileobj%file_desc, vardesc, decomp%iodesc, vdata, err, fillval=fill_r8_kind)
-      else
-        call PIO_write_darray(fileobj%file_desc, vardesc, decomp%iodesc, vdata, err)
       endif
     class default
       call error("unsupported variable type: domain_write_4d: file: "//trim(fileobj%path)//" variable:"// &
                & trim(variable_name))
   end select
   call check_netcdf_code(err, "domain_write.inc")
+
+  if (allocated(fill_i4_kind)) deallocate(fill_i4_kind)
+  if (allocated(fill_r4_kind)) deallocate(fill_r4_kind)
+  if (allocated(fill_r8_kind)) deallocate(fill_r8_kind)
 
 end subroutine domain_write_3d
 
@@ -378,10 +378,9 @@ subroutine domain_write_4d(fileobj, variable_name, vdata, unlim_dim_level, &
   integer :: ydim_index
   integer :: ypos
   integer :: yc_size
-  integer(kind=i4_kind) :: fill_i4_kind !< Fill value of a i4_kind variable
-  integer(kind=i8_kind) :: fill_i8_kind !< Fill value of a i8_kind variable
-  real(kind=r4_kind) :: fill_r4_kind !< Fill value of a r4_kind variable
-  real(kind=r8_kind) :: fill_r8_kind !< Fill value of a r8_kind variable
+  integer(kind=i4_kind), allocatable :: fill_i4_kind !< Fill value of a i4_kind variable
+  real(kind=r4_kind), allocatable :: fill_r4_kind !< Fill value of a r4_kind variable
+  real(kind=r8_kind), allocatable :: fill_r8_kind !< Fill value of a r8_kind variable
   integer :: xgmax !< Ending x index of the global io domain
   integer :: xgmin !< Starting x index of the global io domain
   integer :: ygmax !< Ending y index of the global io domain
@@ -415,49 +414,50 @@ subroutine domain_write_4d(fileobj, variable_name, vdata, unlim_dim_level, &
   endif
 
 
-  select type(vdata)
-    type is (integer(kind=i4_kind))
-      basetype_nf = PIO_INT
-    type is (real(kind=r4_kind))
-      basetype_nf = PIO_REAL
-    type is (real(kind=r8_kind))
-      basetype_nf = PIO_DOUBLE
-    class default
-      call error("unsupported variable type: domain_write_4d: file: "//trim(fileobj%path)//" variable:"// &
-               & trim(variable_name))
-  end select
-
   ! set the members of temporary vardesc instance, which is passed when calling PIO_write_darray
   vardesc%varID = varid
   vardesc%ncid = fileobj%ncid
+
+  ! Get the kind of the variable from PIO
+  basetype_nf = get_variable_type(fileobj%ncid, varid)
 
   decomp => get_decomp(fileobj, variable_name, vardesc, shape(vdata), basetype_nf, 4, xdim_index, ydim_index, unlim_dim_level)
 
   err = 0
   select type(vdata)
     type is (integer(kind=i4_kind))
-      if (get_fill_value(fileobj, variable_name, fill_i4_kind, broadcast=.false.)) then
-        call PIO_write_darray(fileobj%file_desc, vardesc, decomp%iodesc, vdata, err, fillval=fill_i4_kind)
-      else
-        call PIO_write_darray(fileobj%file_desc, vardesc, decomp%iodesc, vdata, err)
-      endif
+      allocate(fill_i4_kind)
+      if (.not. get_fill_value(fileobj, variable_name, fill_i4_kind, broadcast=.false.)) deallocate(fill_i4_kind)
+      call PIO_write_darray(fileobj%file_desc, vardesc, decomp%iodesc, vdata, err, fillval=fill_i4_kind)
     type is (real(kind=r4_kind))
-      if (get_fill_value(fileobj, variable_name, fill_r4_kind, broadcast=.false.)) then
+      if (basetype_nf == pio_real) then
+        allocate(fill_r4_kind)
+        if (.not. get_fill_value(fileobj, variable_name, fill_r4_kind, broadcast=.false.)) deallocate(fill_r4_kind)
         call PIO_write_darray(fileobj%file_desc, vardesc, decomp%iodesc, vdata, err, fillval=fill_r4_kind)
-      else
-        call PIO_write_darray(fileobj%file_desc, vardesc, decomp%iodesc, vdata, err)
+      else ! basetype_nf == pio_double
+        allocate(fill_r8_kind)
+        if (.not. get_fill_value(fileobj, variable_name, fill_r8_kind, broadcast=.false.)) deallocate(fill_r8_kind)
+        call PIO_write_darray(fileobj%file_desc, vardesc, decomp%iodesc, real(vdata, kind=r8_kind), err, fillval=fill_r8_kind)
       endif
     type is (real(kind=r8_kind))
-      if (get_fill_value(fileobj, variable_name, fill_r8_kind, broadcast=.false.)) then
+      if (basetype_nf == pio_real) then
+        allocate(fill_r4_kind)
+        if (.not. get_fill_value(fileobj, variable_name, fill_r4_kind, broadcast=.false.)) deallocate(fill_r4_kind)
+        call PIO_write_darray(fileobj%file_desc, vardesc, decomp%iodesc, real(vdata, kind=r4_kind), err, fillval=fill_r4_kind)
+      else ! basetype_nf == pio_double
+        allocate(fill_r8_kind)
+        if (.not. get_fill_value(fileobj, variable_name, fill_r8_kind, broadcast=.false.)) deallocate(fill_r8_kind)
         call PIO_write_darray(fileobj%file_desc, vardesc, decomp%iodesc, vdata, err, fillval=fill_r8_kind)
-      else
-        call PIO_write_darray(fileobj%file_desc, vardesc, decomp%iodesc, vdata, err)
       endif
     class default
       call error("unsupported variable type: domain_write_4d: file: "//trim(fileobj%path)//" variable:"// &
                & trim(variable_name))
   end select
   call check_netcdf_code(err, "domain_write.inc")
+
+  if (allocated(fill_i4_kind)) deallocate(fill_i4_kind)
+  if (allocated(fill_r4_kind)) deallocate(fill_r4_kind)
+  if (allocated(fill_r8_kind)) deallocate(fill_r8_kind)
 
 end subroutine domain_write_4d
 

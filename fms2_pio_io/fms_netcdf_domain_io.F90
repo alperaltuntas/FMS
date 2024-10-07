@@ -1123,7 +1123,7 @@ function create_decomp(fileobj, variable_name, vdata_shape, basetype_nf, ndims, 
     call PIO_initdecomp(pio_iosystem, basetype_nf, (/nig, njg, vdata_shape(3), vdata_shape(4) /), dof, decomp%iodesc)
     deallocate(dof)
   else
-    call error("Unsupported number of dimensions encountered in get_decomp.")
+    call error("Unsupported number of dimensions encountered in create_decomp.")
   endif
 
 end function create_decomp

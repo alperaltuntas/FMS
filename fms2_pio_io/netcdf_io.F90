@@ -248,6 +248,7 @@ public :: get_variable_sense
 public :: get_variable_missing
 public :: get_variable_id
 public :: get_variable_units
+public :: get_variable_type
 public :: get_time_calendar
 public :: is_registered_to_restart
 public :: set_netcdf_mode
