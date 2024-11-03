@@ -994,12 +994,12 @@ function get_decomp(fileobj, variable_name, vardesc, vdata_shape, basetype_nf, n
 
 end function get_decomp
 
-function create_decomp(fileobj, variable_name, vdata_shape, basetype_nf, ndims, xdim_index, ydim_index) &
+function create_decomp(fileobj, variable_name, vdata_shape_in, basetype_nf, ndims, xdim_index, ydim_index) &
   result(decomp)
 
   type(FmsNetcdfDomainFile_t), intent(in) :: fileobj !< File object.
   character(len=*), intent(in) :: variable_name !< Variable name.
-  integer, dimension(:), intent(in) :: vdata_shape
+  integer, dimension(:), intent(in) :: vdata_shape_in
   integer, intent(in) :: basetype_nf
   integer, intent(in) :: ndims
   integer, intent(in) :: xdim_index
@@ -1015,25 +1015,33 @@ function create_decomp(fileobj, variable_name, vdata_shape, basetype_nf, ndims, 
   integer :: ni, nj, nig, njg
   integer :: i,j,k,l
   integer :: unlim_dim_index
+  integer, dimension(:), allocatable :: vdata_shape
 
   unlim_dim_index = get_variable_unlimited_dimension_index(fileobj, variable_name)
-
-  if (unlim_dim_index /= -1) then
-    if (unlim_dim_index /= ndims) call error("unlimited dimension must be the slowest varying dimension")
-  endif
 
   call mpp_get_compute_domain(fileobj%domain, xbegin=isc, xend=iec, xsize=ni)
   call mpp_get_compute_domain(fileobj%domain, ybegin=jsc, yend=jec, ysize=nj)
   call mpp_get_global_domain (fileobj%domain, xsize = nig, ysize = njg)
 
-  ! TODO: check if this subroutine works as expected when buffer_includes_halos 
-
   ! initialize decomp and its iodesc member
   allocate(decomp)
   decomp%basetype_nf = basetype_nf
   decomp%unlim_dim_index = unlim_dim_index
-  decomp%ndims = ndims
-  allocate(decomp%dshape(ndims)); decomp%dshape(:) = vdata_shape(:)
+  if (unlim_dim_index == ndims+1) then
+    decomp%ndims = ndims+1
+    allocate(vdata_shape(ndims+1))
+    vdata_shape(:ndims) = vdata_shape_in(:)
+    vdata_shape(ndims+1) = 1
+  else
+    decomp%ndims = ndims
+    allocate(vdata_shape(ndims))
+    vdata_shape(:) = vdata_shape_in(:)
+  endif
+  allocate(decomp%dshape(decomp%ndims)); decomp%dshape(:) = vdata_shape(:)
+
+  if (unlim_dim_index /= -1) then
+    if (unlim_dim_index /= decomp%ndims) call error("unlimited dimension must be the slowest varying dimension")
+  endif
 
 
   ioff = 1 - isc
@@ -1045,7 +1053,7 @@ function create_decomp(fileobj, variable_name, vdata_shape, basetype_nf, ndims, 
     call error("Dimension index ordering assumptions violated. Need to update FMS PIO code.")
   endif
 
-  if (ndims==2 .or. (ndims==3 .and. unlim_dim_index==3)) then
+  if (decomp%ndims==2 .or. (decomp%ndims==3 .and. unlim_dim_index==3)) then
     local_size = vdata_shape(1) * vdata_shape(2) 
     global_size = nig * njg 
     allocate(dof(local_size))
@@ -1063,13 +1071,13 @@ function create_decomp(fileobj, variable_name, vdata_shape, basetype_nf, ndims, 
       print *, "global size: ", global_size, &
                "minval(dof) ", minval(dof),  &
                "maxval(dof) ", maxval(dof)
-      call error('error in dof construction')
+      call error('error in 2d dof construction')
     endif
 
     call PIO_initdecomp(pio_iosystem, basetype_nf, (/nig, njg/), dof, decomp%iodesc)
     deallocate(dof)
 
-  else if (ndims==3 .or. (ndims==4 .and. unlim_dim_index==4)) then
+  else if (decomp%ndims==3 .or. (decomp%ndims==4 .and. unlim_dim_index==4)) then
     local_size = vdata_shape(1) * vdata_shape(2) * vdata_shape(3) 
     global_size = nig * njg * vdata_shape(3)
     allocate(dof(local_size))
@@ -1089,13 +1097,16 @@ function create_decomp(fileobj, variable_name, vdata_shape, basetype_nf, ndims, 
       print *, "global size: ", global_size, &
                "minval(dof) ", minval(dof),  &
                "maxval(dof) ", maxval(dof)
-      call error('error in dof construction')
+      print *,  "local size: ", local_size, jsc, jec, joff, isc, iec, ioff
+      print *,  "n: ", n
+      print *, "vdata shape: ", vdata_shape
+      call error('error in 3d dof construction')
     endif
 
     call PIO_initdecomp(pio_iosystem, basetype_nf, (/nig, njg, vdata_shape(3)/), dof, decomp%iodesc)
     deallocate(dof)
 
-  else if (ndims==4 .or. (ndims==5 .and. unlim_dim_index==5)) then
+  else if (decomp%ndims==4 .or. (decomp%ndims==5 .and. unlim_dim_index==5)) then
     local_size = vdata_shape(1) * vdata_shape(2) * vdata_shape(3) * vdata_shape(4)
     global_size = nig * njg * vdata_shape(3) * vdata_shape(4)
     allocate(dof(local_size))
@@ -1117,7 +1128,7 @@ function create_decomp(fileobj, variable_name, vdata_shape, basetype_nf, ndims, 
       print *, "global size: ", global_size, &
                "minval(dof) ", minval(dof),  &
                "maxval(dof) ", maxval(dof)
-      call error('error in dof construction')
+      call error('error in 4d dof construction')
     endif
 
     call PIO_initdecomp(pio_iosystem, basetype_nf, (/nig, njg, vdata_shape(3), vdata_shape(4) /), dof, decomp%iodesc)
@@ -1125,6 +1136,8 @@ function create_decomp(fileobj, variable_name, vdata_shape, basetype_nf, ndims, 
   else
     call error("Unsupported number of dimensions encountered in create_decomp.")
   endif
+
+  deallocate(vdata_shape)
 
 end function create_decomp
 
