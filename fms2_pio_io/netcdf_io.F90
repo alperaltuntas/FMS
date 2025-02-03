@@ -1244,6 +1244,17 @@ subroutine netcdf_add_dimension(fileobj, dimension_name, dimension_length, &
     endif
   endif
 
+  if (fileobj%is_readonly) then
+    !print *, "WARNING: netcdf_add_dimension: file:"//trim(fileobj%path)//" dimension name:"// &
+    !       & trim(dimension_name)//" is readonly, not adding dimension"
+    !! MOM6 calls netcdf_add_dimension (va register_axis interface), in MOM_io_infra.F90::prepare_to_read_var
+    !! via MOM_register_variable_axes for restart variables to be read in. This causes a problem because
+    !! in "readonly" mode, we cannot add a dimension to the file. Hence, the return statement below for
+    !! the readonly case. This doesn't seem to be a problem for variables that have a defined domain
+    !! position. For those with a defined domain position, the subroutine being called is 
+    !! register_domain_decomposed_dimension, which doesn't appear to exhibit the same problem.
+    return
+  endif
   call set_netcdf_mode(fileobj%ncid, define_mode)
   err = pio_def_dim(fileobj%ncid, trim(dimension_name), dim_len, dimid)
   call check_netcdf_code(err, "Netcdf_add_dimension: file:"//trim(fileobj%path)//" dimension name:"// &
